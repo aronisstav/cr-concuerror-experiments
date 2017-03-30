@@ -3,6 +3,8 @@
 
 -ifdef(TEST).
 
+-concuerror_options([{ignore_error, deadlock}]).
+
 -include_lib("eunit/include/eunit.hrl").
 -include("layout.hrl").
 
@@ -559,5 +561,118 @@ conc_write_repair3_1to2_test() ->
 write_result_is_ok(Result) ->
     W_expected = [ok, written, starved],    % any # of these is ok
     lists:member(Result, W_expected).
+
+m3_1to2_min_test() ->
+    Val_a = <<"A version">>,
+    Val_b = <<"Version B">>,
+    Layout1 = #layout{epoch=1, upi=[a],   repairing=[]},
+    Layout2 = #layout{epoch=2, upi=[a],   repairing=[b]},
+    Layout3 = #layout{epoch=3, upi=[a,b], repairing=[]},
+    {ok, _Pid_a} = ?M:start_link(a, 1, Layout1, []),
+    {ok, _Pid_b} = ?M:start_link(b, 1, Layout1, []),
+    Logs = [a, b],
+    {ok, Pid_layout} = layout_server:start_link(layout_server, 1, Layout1),
+
+    _Wa_pid = spawn(fun() ->
+                            {Res, _} = log_client:write(1, Val_a, Layout1)
+                    end),
+
+    _ = log_client:write(1, Val_b, Layout1),
+
+    _L_pid = spawn(fun() ->
+                           ok = layout_server:write(layout_server,2,Layout2),
+                           [ok = ?M:set_layout(Log, 2, Layout2) ||
+                               Log <- Logs],
+
+                           %% HACK: hard-code read-repair for this case
+                           case ?M:read(a, 2, 1) of
+                               {ok, V_repair} ->
+                                   case ?M:write_clobber(b, 2, 1, V_repair) of
+                                       ok      -> ok;
+                                       written -> ok;
+                                       starved -> exit(oi_todo_yo1)
+                                   end;
+                               not_written ->
+                                   ok;
+                               starved ->
+                                   exit(oi_todo_yo2)
+                           end,
+
+                           ok = layout_server:write(layout_server,3,Layout3),
+                           [ok = ?M:set_layout(Log, 3, Layout3) ||
+                               Log <- Logs]
+                   end),
+
+    {Res1, _} = log_client:read(1, Layout1),
+    {Res2, _} = log_client:read(1, Layout1),
+    R_result = {Res1, Res2},
+    %% TODO: simply by collapsing not_written & starved to same thing.
+    case R_result of
+        %% {not_written,not_written} -> ok;
+        %% {starved,    not_written} -> ok;
+        %% {not_written,starved}     -> ok;
+        %% {not_written,{ok,_}}      -> ok;
+        {{ok,Same},  {ok,Same}}   -> ok;
+        {starved,    {ok,_}}      -> ok;
+        {{ok,_},     starved}     -> ok;
+        {starved,    starved}     -> ok
+    end.
+
+m3_1to2_min2_test() ->
+    Val_a = <<"A version">>,
+    Val_b = <<"Version B">>,
+    Layout1 = #layout{epoch=1, upi=[a],   repairing=[]},
+    Layout2 = #layout{epoch=2, upi=[a],   repairing=[b]},
+    Layout3 = #layout{epoch=3, upi=[a,b], repairing=[]},
+    {ok, _Pid_a} = ?M:start_link(a, 1, Layout1, []),
+    {ok, _Pid_b} = ?M:start_link(b, 1, Layout1, []),
+    Logs = [a, b],
+    {ok, Pid_layout} = layout_server:start_link(layout_server, 1, Layout1),
+
+    _Wa_pid = spawn(fun() ->
+                            {Res, _} = log_client:write(1, Val_a, Layout1)
+                    end),
+
+    _L_pid = spawn(fun() ->
+                           ok = layout_server:write(layout_server,2,Layout2),
+                           [ok = ?M:set_layout(Log, 2, Layout2) ||
+                               Log <- Logs],
+
+                           %% HACK: hard-code read-repair for this case
+                           case ?M:read(a, 2, 1) of
+                               {ok, V_repair} ->
+                                   case ?M:write_clobber(b, 2, 1, V_repair) of
+                                       ok      -> ok;
+                                       written -> ok;
+                                       starved -> exit(oi_todo_yo1)
+                                   end;
+                               not_written ->
+                                   ok;
+                               starved ->
+                                   exit(oi_todo_yo2)
+                           end,
+
+                           ok = layout_server:write(layout_server,3,Layout3),
+                           [ok = ?M:set_layout(Log, 3, Layout3) ||
+                               Log <- Logs],
+                           ok
+                   end),
+
+    {_, LA} = log_client:write(1, Val_b, Layout1),
+
+    {Res1, LB} = log_client:read(1, LA),
+    {Res2, _} = log_client:read(1, LB),
+    R_result = {Res1, Res2},
+    %% TODO: simply by collapsing not_written & starved to same thing.
+    case R_result of
+        {not_written,not_written} -> ok;
+        {starved,    not_written} -> ok;
+        {not_written,starved}     -> ok;
+        {not_written,{ok,_}}      -> ok;
+        {starved,    {ok,_}}      -> ok;
+        {{ok,_},     starved}     -> ok;
+        {starved,    starved}     -> ok;
+        {{ok,Same},  {ok,Same}}   -> ok
+    end.
 
 -endif. % TEST
