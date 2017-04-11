@@ -263,10 +263,10 @@ conc_write_repair1_test() ->
             {not_written,not_written} -> ok;
             {starved,    not_written} -> ok;
             {not_written,starved}     -> ok;
-            {not_written,{ok,Val_a}}  -> ok;
-            {{ok,Val_a}, {ok,Val_a}}  -> ok;
-            {starved,    {ok,Val_a}}  -> ok;
-            {{ok,Val_a}, starved}     -> ok;
+            {not_written,{ok,_Val_a}}  -> ok;
+            {{ok,_Val_a}, {ok,_Val_a}}  -> ok;
+            {starved,    {ok,_Val_a}}  -> ok;
+            {{ok,_Val_a}, starved}     -> ok;
             {starved,    starved}     -> ok
         end,
         %% io:format(user, "R_result = ~p\n", [R_result]),
