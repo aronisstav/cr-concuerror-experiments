@@ -474,10 +474,23 @@ conc_write_repair3_1to2_test() ->
                               Parent ! {done, self(), Res}
                         end),
         R_pid = spawn(fun() ->
-                              {Res1, _} = log_client:read(1, Layout1),
-                              {Res2, _} = log_client:read(1, Layout1),
-                              Parent ! {done, self(), {Res1,Res2}}
-                        end),
+                          {Res1, L2} = log_client:read(1, Layout1),
+                          case Res1 of
+                            {ok, V} ->
+                              {Res2, _} = log_client:read(1, L2),
+                              case Res2 of
+                                starved -> ok;
+                                {ok, V} -> ok;
+                                not_written -> error(data_lost);
+                                {ok, _} -> error(write_once_violation)
+                              end;
+                            _ ->
+                              %% If the first read does not succeed no
+                              %% point in trying other things.
+                              ok
+                          end,
+                          Parent ! {done, self(), ok}
+                      end),
         L_pid = spawn(fun() ->
                               ok = layout_server:write(layout_server,2,Layout2),
                               [ok = ?M:set_layout(Log, 2, Layout2) ||
@@ -526,17 +539,7 @@ conc_write_repair3_1to2_test() ->
 
         ok = L_result,
 
-        %% TODO: simply by collapsing not_written & starved to same thing.
-        case R_result of
-            {not_written,not_written} -> ok;
-            {starved,    not_written} -> ok;
-            {not_written,starved}     -> ok;
-            {not_written,{ok,_}}      -> ok;
-            {{ok,Same},  {ok,Same}}   -> ok;
-            {starved,    {ok,_}}      -> ok;
-            {{ok,_},     starved}     -> ok;
-            {starved,    starved}     -> ok
-        end,
+        ok = R_result,
 
         Idxs = [1],
         [begin
