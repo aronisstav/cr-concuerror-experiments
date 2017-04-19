@@ -24,18 +24,5 @@ test: compile
 compile-test:
 	$(REBAR) eunit -v skip_deps=true suites=log_server_test tests=foo_test
 
-conc_write1_test: compile-test
+%_test: compile-test
 	$(CONCUERROR) --pz .eunit -m log_server_test -t $@ $(CONC_OPTS)
-
-conc_write_repair1_test: compile-test
-	$(CONCUERROR) --pz .eunit -m log_server_test -t $@ $(CONC_OPTS)
-
-conc_write_repair2_test: compile-test
-	$(CONCUERROR) --pz .eunit -m log_server_test -t $@ $(CONC_OPTS)
-
-conc_write_repair3_2to3_test: compile-test
-	$(CONCUERROR) --pz .eunit -m log_server_test -t $@ $(CONC_OPTS)
-
-conc_write_repair3_1to2_test: compile-test
-	$(CONCUERROR) --pz .eunit -m log_server_test -t $@ $(CONC_OPTS)
-
