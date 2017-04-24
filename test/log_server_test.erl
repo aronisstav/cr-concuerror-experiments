@@ -204,10 +204,23 @@ conc_write_repair1_test() ->
                               Parent ! {done, self(), Res}
                         end),
         R_pid = spawn(fun() ->
-                              {Res1, _} = log_client:read(1, Layout1),
-                              {Res2, _} = log_client:read(1, Layout1),
-                              Parent ! {done, self(), {Res1,Res2}}
-                        end),
+                          {Res1, L2} = log_client:read(1, Layout1),
+                          case Res1 of
+                            {ok, V} ->
+                              {Res2, _} = log_client:read(1, L2),
+                              case Res2 of
+                                starved -> ok;
+                                {ok, V} -> ok;
+                                not_written -> error(data_lost);
+                                {ok, _} -> error(write_once_violation)
+                              end;
+                            _ ->
+                              %% If the first read does not succeed no
+                              %% point in trying other things.
+                              ok
+                          end,
+                          Parent ! {done, self(), ok}
+                      end),
         L_pid = spawn(fun() ->
                               ok = layout_server:write(layout_server,2,Layout2),
                               [ok = ?M:set_layout(Log, 2, Layout2) ||
@@ -248,27 +261,15 @@ conc_write_repair1_test() ->
         L_result = receive {done, L_pid, Res_z} -> Res_z end,
 
         %% Sanity checking
-        W_expected = [ok, written, starved],    % any # of these is ok
-        case lists:member(Wa_result, W_expected) of
-            true -> ok;
-            false -> exit({bummer, Wa_result})
+        true = write_result_is_ok(Wa_result),
+        true = write_result_is_ok(Wb_result),
+        if Wa_result == ok, Wb_result == ok -> error(write_once_violation);
+           true                             -> ok
         end,
-        case lists:member(Wb_result, W_expected) of
-            true -> ok;
-            false -> exit({bummer, Wb_result})
-        end,
+
         ok = L_result,
 
-        case R_result of
-            {not_written,not_written} -> ok;
-            {starved,    not_written} -> ok;
-            {not_written,starved}     -> ok;
-            {not_written,{ok,_Val_a}}  -> ok;
-            {{ok,_Val_a}, {ok,_Val_a}}  -> ok;
-            {starved,    {ok,_Val_a}}  -> ok;
-            {{ok,_Val_a}, starved}     -> ok;
-            {starved,    starved}     -> ok
-        end,
+        ok = R_result,
         %% io:format(user, "R_result = ~p\n", [R_result]),
 
         %% %% The system under test is stable.  If we do a read-repair of
@@ -325,5 +326,8 @@ conc_write_repair1_test() ->
     end,
     ok.
     
+write_result_is_ok(Result) ->
+    W_expected = [ok, written, starved],    % any # of these is ok
+    lists:member(Result, W_expected).
 
 -endif. % TEST
