@@ -287,6 +287,36 @@ conc_write_repair1_test() ->
         %%      end
         %%  end || Idx <- Idxs],
 
+        Idxs = [1],
+        %% [{ok, _LO} = log_client:read_repair(Idx, Layout2) || Idx <- Idxs],
+
+        [begin
+             R_res = [log_server:read(Log, 3, Idx) || Log <- Layout3#layout.upi],
+             case R_res of
+                 [not_written,not_written,not_written] -> ok;
+                 [{ok, U_val},not_written,not_written] -> ok;
+                 [{ok, U_val},{ok, U_val},not_written] -> ok;
+                 [{ok, U_val},{ok, U_val},{ok, U_val}] -> ok
+             end
+
+             %% Is the test below a bogus check??  For example, this
+             %% catches the case of
+             %% [{ok,<<"A version">>},{ok,<<"A version">>},not_written]
+             %% This upholds the UPI but leaves the tail unwritten, is that
+             %% really valid behavior?  Yes, actually, I believe that that
+             %% should be ok, because the write to the tail may have starved
+             %% and thus isn't written due to epoch change + scheduling
+             %% unfairness.  However, the epoch change & scheduling unfairness
+             %% should never violate the UPI.
+             %% Thus, it's a bogus check, don't use this below:
+             %%
+             %% case lists:usort(R_res) of
+             %%     [not_written] ->          ok;
+             %%     [{ok, _Unanimous_val}] -> ok;
+             %%     _                      -> exit({not_unanimous, lists:zip(Layout3#layout.upi, R_res)})
+             %% end
+         end || Idx <- Idxs],
+
         ok
     after
         [catch ?M:stop(P) || P <- Logs],
