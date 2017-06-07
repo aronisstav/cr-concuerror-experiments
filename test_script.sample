@@ -1,0 +1,40 @@
+#!/bin/bash
+
+ilimit=10000
+
+export CONCUERROR=concuerror
+
+commit=`git rev-parse --short -q HEAD`
+
+case $commit in
+    650a61e | 26d3c34 | 2f9399c | ea9880d )
+        target=conc_write_repair1_test
+        tag=method1
+        ;;
+    3037f8c | c88ecbb )
+        target=conc_write_repair2_test
+        tag=method2
+        ;;
+    *)
+        if [ -z "$1" ]; then
+            echo "Cannot guess test. Please give test as argument."
+            exit 1
+        elif [ "$1" = "12" ]; then
+            target=conc_write_repair3_1to2_test
+            tag=method3-1to2
+        elif [ "$1" = "23" ]; then
+            target=conc_write_repair3_2to3_test
+            tag=method3-2to3
+        else
+            target=$1
+            tag=method3-$target
+        fi
+        shift
+esac
+
+make clean
+make
+id="$tag-$commit-"`date -uI'seconds'`
+CONC_OPTS=" -o cr-$id.txt -i $ilimit $@"
+/usr/bin/time env CONC_OPTS="$CONC_OPTS" make $target
+cp cr-$id.txt cr-latest.txt
